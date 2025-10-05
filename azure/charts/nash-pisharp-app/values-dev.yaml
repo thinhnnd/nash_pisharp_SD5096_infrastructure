@@ -1,0 +1,92 @@
+# Development environment values
+replicaCount: 1
+
+image:
+  registry: acrnashpisharp.azurecr.io
+  pullPolicy: Always
+
+frontend:
+  enabled: true
+  replicaCount: 1
+  image:
+    tag: dev
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+backend:
+  enabled: true
+  replicaCount: 1
+  image:
+    tag: dev
+  env:
+    - name: NODE_ENV
+      value: "development"
+    - name: PORT
+      value: "3000"
+    - name: MONGODB_URI
+      value: "mongodb://{{ include \"nash-pisharp-app.fullname\" . }}-mongodb:27017/todoapp_dev"
+    - name: LOG_LEVEL
+      value: "debug"
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  hosts:
+    - host: nash-pisharp-dev.local
+      paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: frontend
+              port:
+                number: 3000
+        - path: /api
+          pathType: Prefix
+          backend:
+            service:
+              name: backend
+              port:
+                number: 3000
+
+mongodb:
+  enabled: true
+  external: false
+  image:
+    tag: "6.0"
+  auth:
+    enabled: false
+    database: "todoapp_dev"
+  persistence:
+    enabled: true
+    size: 2Gi
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: false
+
+autoscaling:
+  enabled: false

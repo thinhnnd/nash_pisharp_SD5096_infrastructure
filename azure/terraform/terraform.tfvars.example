@@ -1,0 +1,26 @@
+# Example terraform.tfvars file
+# Copy this file to terraform.tfvars and customize the values
+
+# General configuration
+project_name    = "nash-pisharp"
+environment     = "demo"
+location        = "East US"
+resource_group_name = "rg-nash-pisharp-demo"
+
+# Network configuration
+vnet_name       = "vnet-nash-pisharp"
+vnet_cidr       = "10.0.0.0/16"
+aks_subnet_cidr = "10.0.1.0/24"
+vm_subnet_cidr  = "10.0.2.0/24"
+
+# ACR configuration
+acr_name          = "acrnashpisharp"
+acr_sku           = "Standard"
+acr_admin_enabled = true
+
+# AKS configuration
+cluster_name       = "aks-nash-pisharp"
+dns_prefix         = "aks-nash-pisharp"
+kubernetes_version = "1.27.3"
+node_count         = 2
+vm_size           = "Standard_D2s_v3"

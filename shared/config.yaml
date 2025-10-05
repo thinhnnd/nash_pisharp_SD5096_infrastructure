@@ -1,0 +1,54 @@
+# Shared configuration values
+common:
+  project_name: "nash-pisharp"
+  environment: "demo"
+  region: "eastus"
+  tags:
+    Environment: "demo"
+    Project: "nash-pisharp"
+    ManagedBy: "terraform"
+    
+# Application configuration
+app:
+  name: "nash-pisharp-app"
+  version: "1.0.0"
+  
+  # Container images
+  images:
+    frontend:
+      repository: "frontend"
+      tag: "latest"
+    backend:
+      repository: "backend"
+      tag: "latest"
+      
+  # Environment variables
+  env:
+    NODE_ENV: "production"
+    PORT: "3000"
+    
+# Database configuration
+database:
+  mongodb:
+    enabled: true
+    auth:
+      rootUser: "root"
+      rootPassword: "password"
+      database: "todoapp"
+    persistence:
+      size: "8Gi"
+      
+# Security configuration
+security:
+  tls:
+    enabled: true
+  rbac:
+    enabled: true
+    
+# Monitoring configuration
+monitoring:
+  enabled: false
+  prometheus:
+    enabled: false
+  grafana:
+    enabled: false

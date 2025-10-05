@@ -1,0 +1,43 @@
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example
+.terraform/
+.terraform.lock.hcl
+terraform.rc
+.terraformrc
+
+# Helm
+*.tgz
+charts/**/charts/
+charts/**/Chart.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+
+# Secrets
+secrets/
+*.pem
+*.key
+*.crt
+
+# Backup files
+*.bak
+*.backup
