@@ -1,4 +1,34 @@
-# Nash PiSharp Demo Infrastructure
+# Nash```
+nash_pisharp_SD5096_infrastructure/
+├── azure/
+│   ├── terraform/      # IaC for Azure (AKS, ACR, VNet)
+│   │   ├── bootstrap/  # Foundation resources
+│   │   ├── vnet/      # Vi# Navigate back to charts directory from application directories
+cd ../../nash_pisharp_SD5096_infrastructure/azure/chartsal Network
+│   │   ├── acr/       # Container Registry
+│   │   ├── aks/       # Kubernetes cluster
+│   └── charts/         # Helm charts for Azure deployment
+│       └── nash-pisharp-app/
+├── aws/
+│   ├── terraform/      # IaC for AWS (EKS, S3, VPC) [Future]
+│   └── charts/         # Helm charts for AWS deployment [Future]
+├── shared/             # Common configurations, policies, secrets
+└── README.md
+
+apps/
+├── nash_pisharp_SD5096_backend/  # Node.js/Express API server
+│   ├── Dockerfile
+│   ├── package.json
+│   ├── server.js
+│   ├── config/
+│   ├── models/
+│   └── routes/
+└── nash_pisharp_SD5096_frontend/ # React.js application
+    ├── Dockerfile
+    ├── package.json
+    ├── public/
+    └── src/
+```rastructure
 
 This repository contains Infrastructure as Code (IaC) for deploying the Nash PiSharp demo application to cloud providers using Terraform and Helm.
 
@@ -140,13 +170,17 @@ helm install ingress-nginx ingress-nginx/ingress-nginx `
 ### Step 6: Build and Push Docker Images
 
 1. Build your application images:
+
 ```powershell
-# Build frontend
-cd src/frontend
+# Build frontend 
+# Note: You have to clone frontend repo first
+cd ./nash_pisharp_SD5096_frontend
 docker build -t acrnashpisharp.azurecr.io/frontend:latest .
 
 # Build backend  
-cd ../backend
+# Note: You have to clone frontend repo first
+
+cd ./nash_pisharp_SD5096_backend
 docker build -t acrnashpisharp.azurecr.io/backend:latest .
 ```
 
@@ -164,7 +198,8 @@ docker push acrnashpisharp.azurecr.io/backend:latest
 
 1. Navigate to the charts directory:
 ```powershell
-cd ../charts
+# Navigate to charts directory from application directories
+cd ./azure/charts
 ```
 
 2. Create namespace and apply shared policies:
