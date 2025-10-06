@@ -1,6 +1,24 @@
 # PowerShell Script for Azure Infrastructure Setup
 # This script provides PowerShell equivalents for Azure infrastructure management
 
+# Main script parameters
+param(
+    [Parameter(Position=0)]
+    [ValidateSet("Setup", "Destroy", "Plan", "Validate", "Output", "Help")]
+    [string]$Command,
+    
+    [ValidateSet("demo", "dev", "staging", "prod")]
+    [string]$Environment = "demo",
+    
+    [string]$SubscriptionId,
+    
+    [string]$TenantId,
+    
+    [string]$Location = "eastus",
+    
+    [switch]$Help
+)
+
 # Colors for output
 $ErrorActionPreference = "Stop"
 
@@ -198,7 +216,8 @@ terraform {
 }
 "@
     
-    $backendConfig | Out-File -FilePath "$PSScriptRoot\..\terraform\backend.tf" -Encoding UTF8
+    # Backend configuration is already in main.tf
+    # $backendConfig | Out-File -FilePath "$PSScriptRoot\..\terraform\backend.tf" -Encoding UTF8
     
     Write-Success "Terraform backend configured"
 }
@@ -445,24 +464,6 @@ function Remove-Infrastructure {
     
     Write-Success "Infrastructure destroyed successfully!"
 }
-
-# Main script parameters
-param(
-    [Parameter(Position=0)]
-    [ValidateSet("Setup", "Destroy", "Plan", "Validate", "Output", "Help")]
-    [string]$Command,
-    
-    [ValidateSet("demo", "dev", "staging", "prod")]
-    [string]$Environment = "demo",
-    
-    [string]$SubscriptionId,
-    
-    [string]$TenantId,
-    
-    [string]$Location = "eastus",
-    
-    [switch]$Help
-)
 
 # Configuration
 $ProjectName = "nash-pisharp"

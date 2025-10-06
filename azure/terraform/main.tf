@@ -17,12 +17,10 @@ terraform {
   }
   
   backend "azurerm" {
-    # Backend configuration will be set during terraform init
-    # Example:
-    # resource_group_name  = "rg-nash-pisharp-demo"
-    # storage_account_name = "sanashpisharptfstate"
-    # container_name       = "tfstate"
-    # key                  = "azure/terraform.tfstate"
+    resource_group_name  = "nash-pisharp-demo-tfstate-rg"
+    storage_account_name = "nashpisharpdemotfstate"
+    container_name       = "tfstate"
+    key                  = "demo.terraform.tfstate"
   }
 }
 
@@ -68,15 +66,15 @@ data "azurerm_client_config" "current" {}
 
 # Bootstrap module (create once manually)
 # Uncomment when running for the first time
-# module "bootstrap" {
-#   source = "./bootstrap"
-#   
-#   resource_group_name   = var.resource_group_name
-#   location             = var.location
-#   storage_account_name = var.storage_account_name
-#   key_vault_name       = var.key_vault_name
-#   tags                 = local.common_tags
-# }
+module "bootstrap" {
+  source = "./bootstrap"
+  
+  resource_group_name   = var.resource_group_name
+  location             = var.location
+  storage_account_name = var.storage_account_name
+  key_vault_name       = var.key_vault_name
+  tags                 = local.common_tags
+}
 
 # VNet/Network module
 module "vnet" {
@@ -89,6 +87,8 @@ module "vnet" {
   aks_subnet_cidr    = var.aks_subnet_cidr
   vm_subnet_cidr     = var.vm_subnet_cidr
   tags               = local.common_tags
+  
+  depends_on = [module.bootstrap]
 }
 
 # ACR module
@@ -101,6 +101,8 @@ module "acr" {
   sku                = var.acr_sku
   admin_enabled      = var.acr_admin_enabled
   tags               = local.common_tags
+  
+  depends_on = [module.bootstrap]
 }
 
 # AKS module
@@ -118,7 +120,7 @@ module "aks" {
   acr_id             = module.acr.acr_id
   tags               = local.common_tags
   
-  depends_on = [module.vnet, module.acr]
+  depends_on = [module.bootstrap, module.vnet, module.acr]
 }
 
 # NGINX Ingress Controller module

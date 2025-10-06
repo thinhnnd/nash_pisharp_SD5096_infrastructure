@@ -1,6 +1,25 @@
 # PowerShell Script for Azure Application Deployment
 # This script provides PowerShell equivalents for application deployment to AKS
 
+# Main script parameters
+param(
+    [Parameter(Position=0)]
+    [ValidateSet("Deploy", "Upgrade", "Rollback", "Uninstall", "Status", "Logs", "PortForward", "BuildPush", "Help")]
+    [string]$Command,
+    
+    [ValidateSet("demo", "dev", "staging", "prod")]
+    [string]$Environment = "demo",
+    
+    [string]$Namespace = "nash-pisharp",
+    
+    [string]$ReleaseName = "nash-pisharp-app",
+    
+    [string]$Timeout = "600s",
+    
+    [switch]$NoWait,
+    
+    [switch]$Help
+)
 # Colors for output
 $ErrorActionPreference = "Stop"
 
@@ -575,27 +594,6 @@ function Start-PortForwarding {
         Write-Info "Port forwarding stopped"
     }
 }
-
-# Main script parameters
-param(
-    [Parameter(Position=0)]
-    [ValidateSet("Deploy", "Upgrade", "Rollback", "Uninstall", "Status", "Logs", "PortForward", "BuildPush", "Help")]
-    [string]$Command,
-    
-    [ValidateSet("demo", "dev", "staging", "prod")]
-    [string]$Environment = "demo",
-    
-    [string]$Namespace = "nash-pisharp",
-    
-    [string]$ReleaseName = "nash-pisharp-app",
-    
-    [string]$Timeout = "600s",
-    
-    [switch]$NoWait,
-    
-    [switch]$Help
-)
-
 # Main execution
 if ($Help -or -not $Command) {
     Show-Usage
