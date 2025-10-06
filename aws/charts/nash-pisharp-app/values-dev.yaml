@@ -1,0 +1,53 @@
+# Development environment values for AWS
+frontend:
+  replicaCount: 1
+  resources:
+    limits:
+      cpu: 300m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+backend:
+  replicaCount: 1
+  env:
+    - name: NODE_ENV
+      value: "development"
+    - name: PORT
+      value: "3000"
+    - name: MONGODB_URI
+      value: "mongodb://nash-pisharp-app-mongodb:27017/todoapp"
+  resources:
+    limits:
+      cpu: 300m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+mongodb:
+  persistence:
+    enabled: false  # Disable persistence for dev
+    size: 5Gi
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+ingress:
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    alb.ingress.kubernetes.io/tags: Environment=dev,Project=nash-pisharp
+
+autoscaling:
+  enabled: false
+
+monitoring:
+  enabled: false

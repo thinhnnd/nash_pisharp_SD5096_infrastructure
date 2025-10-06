@@ -1,0 +1,139 @@
+{{- if and .Values.mongodb.enabled (not .Values.mongodb.external) }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nash-pisharp-app.fullname" . }}-mongodb
+  labels:
+    {{- include "nash-pisharp-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mongodb
+spec:
+  type: ClusterIP
+  ports:
+    - port: 27017
+      targetPort: mongodb
+      protocol: TCP
+      name: mongodb
+  selector:
+    {{- include "nash-pisharp-app.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: mongodb
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nash-pisharp-app.fullname" . }}-mongodb-config
+  labels:
+    {{- include "nash-pisharp-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mongodb
+data:
+  {{- if .Values.mongodb.auth.enabled }}
+  MONGO_INITDB_ROOT_USERNAME: {{ .Values.mongodb.auth.rootUser | quote }}
+  {{- end }}
+  MONGO_INITDB_DATABASE: {{ .Values.mongodb.auth.database | quote }}
+
+---
+{{- if .Values.mongodb.auth.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "nash-pisharp-app.fullname" . }}-mongodb-secret
+  labels:
+    {{- include "nash-pisharp-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mongodb
+type: Opaque
+data:
+  MONGO_INITDB_ROOT_PASSWORD: {{ .Values.mongodb.auth.rootPassword | b64enc | quote }}
+{{- end }}
+
+---
+{{- if .Values.mongodb.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "nash-pisharp-app.fullname" . }}-mongodb-pvc
+  labels:
+    {{- include "nash-pisharp-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mongodb
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.mongodb.persistence.size }}
+  {{- if .Values.mongodb.persistence.storageClass }}
+  storageClassName: {{ .Values.mongodb.persistence.storageClass }}
+  {{- end }}
+{{- end }}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nash-pisharp-app.fullname" . }}-mongodb
+  labels:
+    {{- include "nash-pisharp-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mongodb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "nash-pisharp-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: mongodb
+  template:
+    metadata:
+      labels:
+        {{- include "nash-pisharp-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: mongodb
+    spec:
+      securityContext:
+        runAsNonRoot: false
+        runAsUser: 0  # Run as root
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mongodb
+          image: mongo:{{ .Values.mongodb.image.tag | default "latest" }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0  # Run as root
+            privileged: true  # Full privileges for MongoDB
+          ports:
+            - name: mongodb
+              containerPort: 27017
+              protocol: TCP
+          {{- if .Values.mongodb.auth.enabled }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "nash-pisharp-app.fullname" . }}-mongodb-config
+            - secretRef:
+                name: {{ include "nash-pisharp-app.fullname" . }}-mongodb-secret
+          {{- else }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "nash-pisharp-app.fullname" . }}-mongodb-config
+          {{- end }}
+          livenessProbe:
+            tcpSocket:
+              port: mongodb
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: mongodb
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.mongodb.resources | nindent 12 }}
+          {{- if .Values.mongodb.persistence.enabled }}
+          volumeMounts:
+            - name: mongodb-storage
+              mountPath: /data/db
+          {{- end }}
+      {{- if .Values.mongodb.persistence.enabled }}
+      volumes:
+        - name: mongodb-storage
+          persistentVolumeClaim:
+            claimName: {{ include "nash-pisharp-app.fullname" . }}-mongodb-pvc
+      {{- end }}
+{{- end }}

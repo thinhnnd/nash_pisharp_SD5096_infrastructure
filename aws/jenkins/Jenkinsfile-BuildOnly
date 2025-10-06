@@ -1,0 +1,377 @@
+pipeline {
+    agent any
+    
+    parameters {
+        choice(
+            name: 'BUILD_ENVIRONMENT',
+            choices: ['demo', 'dev', 'staging', 'prod'],
+            description: 'Environment to build for'
+        )
+        string(
+            name: 'IMAGE_TAG_SUFFIX',
+            defaultValue: '',
+            description: 'Optional suffix for image tag (e.g., -hotfix)'
+        )
+        booleanParam(
+            name: 'SKIP_CACHE',
+            defaultValue: false,
+            description: 'Skip Docker build cache'
+        )
+    }
+    
+    environment {
+        AWS_DEFAULT_REGION = 'us-east-1'
+        ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
+        PROJECT_NAME = 'nash-pisharp'
+        
+        // Dynamic environment from parameter
+        ENVIRONMENT = "${params.BUILD_ENVIRONMENT}"
+        
+        // AWS credentials from Jenkins
+        AWS_ACCOUNT_ID = credentials('aws-account-id')
+        
+        // Application repositories
+        FRONTEND_REPO = 'https://github.com/thinhnnd/nash_pisharp_SD5096_frontend.git'
+        BACKEND_REPO = 'https://github.com/thinhnnd/nash_pisharp_SD5096_backend.git'
+        
+        // Image tags
+        IMAGE_TAG = "${BUILD_NUMBER}${params.IMAGE_TAG_SUFFIX}"
+        BUILD_ARGS = "${params.SKIP_CACHE ? '--no-cache' : ''}"
+    }
+    
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 30, unit: 'MINUTES')
+        timestamps()
+    }
+    
+    stages {
+        stage('Preparation') {
+            steps {
+                script {
+                    echo """
+                    🚀 Starting Build Pipeline
+                    
+                    📋 Build Configuration:
+                    - Project: ${PROJECT_NAME}
+                    - Environment: ${ENVIRONMENT}
+                    - Build Number: ${BUILD_NUMBER}
+                    - Image Tag: ${IMAGE_TAG}
+                    - ECR Registry: ${ECR_REGISTRY}
+                    - Skip Cache: ${params.SKIP_CACHE}
+                    
+                    📦 Repositories:
+                    - Frontend: ${FRONTEND_REPO}
+                    - Backend: ${BACKEND_REPO}
+                    """
+                }
+                
+                // Clean workspace
+                cleanWs()
+                
+                // Verify AWS CLI and Docker
+                sh '''
+                    echo "Verifying prerequisites..."
+                    aws --version
+                    docker --version
+                    
+                    echo "Checking AWS credentials..."
+                    aws sts get-caller-identity
+                    
+                    echo "Checking ECR repositories..."
+                    aws ecr describe-repositories --region ${AWS_DEFAULT_REGION} --repository-names ${PROJECT_NAME}-${ENVIRONMENT}-frontend ${PROJECT_NAME}-${ENVIRONMENT}-backend || echo "Repositories may not exist yet"
+                '''
+            }
+        }
+        
+        stage('Checkout Code') {
+            parallel {
+                stage('Checkout Frontend') {
+                    steps {
+                        dir('frontend') {
+                            script {
+                                def gitInfo = checkout([
+                                    $class: 'GitSCM',
+                                    branches: [[name: '*/main']],
+                                    userRemoteConfigs: [[url: "${FRONTEND_REPO}"]]
+                                ])
+                                env.FRONTEND_COMMIT = gitInfo.GIT_COMMIT
+                            }
+                            
+                            sh '''
+                                echo "Frontend repository checked out"
+                                echo "Commit: ${FRONTEND_COMMIT}"
+                                echo "Repository contents:"
+                                ls -la
+                            '''
+                        }
+                    }
+                }
+                
+                stage('Checkout Backend') {
+                    steps {
+                        dir('backend') {
+                            script {
+                                def gitInfo = checkout([
+                                    $class: 'GitSCM',
+                                    branches: [[name: '*/main']],
+                                    userRemoteConfigs: [[url: "${BACKEND_REPO}"]]
+                                ])
+                                env.BACKEND_COMMIT = gitInfo.GIT_COMMIT
+                            }
+                            
+                            sh '''
+                                echo "Backend repository checked out"
+                                echo "Commit: ${BACKEND_COMMIT}"
+                                echo "Repository contents:"
+                                ls -la
+                            '''
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Build Docker Images') {
+            parallel {
+                stage('Build Frontend Image') {
+                    steps {
+                        dir('frontend') {
+                            script {
+                                sh '''
+                                    echo "🏗️ Building frontend Docker image..."
+                                    
+                                    # Build with multiple tags
+                                    docker build ${BUILD_ARGS} \\
+                                        -t ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-frontend:${IMAGE_TAG} \\
+                                        -t ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-frontend:latest \\
+                                        .
+                                    
+                                    echo "✅ Frontend image built successfully"
+                                    docker images | grep ${PROJECT_NAME}-${ENVIRONMENT}-frontend
+                                '''
+                            }
+                        }
+                    }
+                }
+                
+                stage('Build Backend Image') {
+                    steps {
+                        dir('backend') {
+                            script {
+                                sh '''
+                                    echo "🏗️ Building backend Docker image..."
+                                    
+                                    # Build with multiple tags
+                                    docker build ${BUILD_ARGS} \\
+                                        -t ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-backend:${IMAGE_TAG} \\
+                                        -t ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-backend:latest \\
+                                        .
+                                    
+                                    echo "✅ Backend image built successfully"
+                                    docker images | grep ${PROJECT_NAME}-${ENVIRONMENT}-backend
+                                '''
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Push to ECR') {
+            steps {
+                script {
+                    sh '''
+                        echo "🔐 Logging into ECR..."
+                        aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | \\
+                            docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                        
+                        echo "📤 Pushing frontend images..."
+                        docker push ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-frontend:${IMAGE_TAG}
+                        docker push ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-frontend:latest
+                        
+                        echo "📤 Pushing backend images..."
+                        docker push ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-backend:${IMAGE_TAG}
+                        docker push ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-backend:latest
+                        
+                        echo "✅ All images pushed successfully to ECR"
+                    '''
+                }
+            }
+        }
+        
+        stage('Generate Artifacts') {
+            steps {
+                script {
+                    // Create image manifest
+                    writeFile file: 'image-manifest.json', text: """
+{
+  "build": {
+    "number": "${BUILD_NUMBER}",
+    "timestamp": "${new Date()}",
+    "environment": "${ENVIRONMENT}",
+    "tag": "${IMAGE_TAG}"
+  },
+  "images": {
+    "frontend": {
+      "repository": "${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-frontend",
+      "tag": "${IMAGE_TAG}",
+      "latest": "latest",
+      "commit": "${env.FRONTEND_COMMIT}",
+      "full_image": "${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-frontend:${IMAGE_TAG}"
+    },
+    "backend": {
+      "repository": "${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-backend",
+      "tag": "${IMAGE_TAG}",
+      "latest": "latest", 
+      "commit": "${env.BACKEND_COMMIT}",
+      "full_image": "${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-backend:${IMAGE_TAG}"
+    }
+  },
+  "registry": {
+    "url": "${ECR_REGISTRY}",
+    "region": "${AWS_DEFAULT_REGION}"
+  }
+}
+"""
+                    
+                    // Create deployment values for GitOps
+                    writeFile file: 'gitops-values.yaml', text: """
+# GitOps deployment values for ${PROJECT_NAME}
+# Generated by Jenkins build #${BUILD_NUMBER}
+
+image:
+  registry: ${ECR_REGISTRY}
+  tag: ${IMAGE_TAG}
+
+frontend:
+  image:
+    repository: ${PROJECT_NAME}-${ENVIRONMENT}-frontend
+    tag: ${IMAGE_TAG}
+
+backend:
+  image:
+    repository: ${PROJECT_NAME}-${ENVIRONMENT}-backend
+    tag: ${IMAGE_TAG}
+
+# Build information
+build:
+  number: ${BUILD_NUMBER}
+  timestamp: "${new Date()}"
+  environment: ${ENVIRONMENT}
+  commits:
+    frontend: ${env.FRONTEND_COMMIT}
+    backend: ${env.BACKEND_COMMIT}
+"""
+                    
+                    echo "📄 Generated artifacts for GitOps deployment"
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            // Archive artifacts
+            archiveArtifacts artifacts: '*.json,*.yaml', allowEmptyArchive: true
+            
+            // Clean up Docker images to save space
+            script {
+                sh '''
+                    echo "🧹 Cleaning up local Docker images..."
+                    docker image prune -f
+                    docker system prune -f --volumes || true
+                '''
+            }
+        }
+        
+        success {
+            script {
+                def manifestContent = readFile('image-manifest.json')
+                
+                echo """
+                ✅ Build and Push Completed Successfully!
+                
+                📊 Build Summary:
+                ================
+                - Build Number: ${BUILD_NUMBER}
+                - Environment: ${ENVIRONMENT}
+                - Image Tag: ${IMAGE_TAG}
+                - Frontend Commit: ${env.FRONTEND_COMMIT}
+                - Backend Commit: ${env.BACKEND_COMMIT}
+                - Build Duration: ${currentBuild.durationString}
+                
+                🐳 Docker Images:
+                =================
+                Frontend: ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-frontend:${IMAGE_TAG}
+                Backend:  ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-backend:${IMAGE_TAG}
+                
+                📦 ECR Repositories:
+                ====================
+                Frontend: ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-frontend
+                Backend:  ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-backend
+                
+                🎯 Next Steps for GitOps:
+                ==========================
+                1. Use the generated 'gitops-values.yaml' file
+                2. Update your GitOps repository with new image tags
+                3. GitOps controller will handle EKS deployment
+                4. Monitor deployment through ArgoCD/Flux dashboard
+                
+                📋 Image Pull Commands:
+                =======================
+                docker pull ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-frontend:${IMAGE_TAG}
+                docker pull ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-backend:${IMAGE_TAG}
+                
+                📄 Artifacts:
+                =============
+                - image-manifest.json: Complete build information
+                - gitops-values.yaml: Values file for Helm deployment
+                """
+            }
+        }
+        
+        failure {
+            script {
+                echo """
+                ❌ Build Pipeline Failed!
+                
+                🔍 Failure Information:
+                =======================
+                - Build Number: ${BUILD_NUMBER}
+                - Failed Stage: ${env.STAGE_NAME}
+                - Node: ${NODE_NAME}
+                - Environment: ${ENVIRONMENT}
+                - Timestamp: ${new Date()}
+                
+                📋 Troubleshooting Steps:
+                =========================
+                1. Check Docker daemon status: docker info
+                2. Verify AWS credentials: aws sts get-caller-identity
+                3. Check ECR access: aws ecr describe-repositories
+                4. Review Dockerfile syntax in source repositories
+                5. Ensure sufficient disk space: df -h
+                6. Check network connectivity to GitHub and ECR
+                
+                💡 Common Issues:
+                =================
+                - AWS credentials expired or insufficient permissions
+                - ECR repositories not created
+                - Dockerfile syntax errors
+                - Network connectivity issues
+                - Insufficient disk space for Docker builds
+                - Docker daemon not running or accessible
+                
+                📞 Support:
+                ===========
+                Contact DevOps team with build number ${BUILD_NUMBER}
+                """
+            }
+        }
+        
+        cleanup {
+            // Final cleanup
+            cleanWs()
+        }
+    }
+}

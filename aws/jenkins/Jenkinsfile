@@ -1,0 +1,197 @@
+pipeline {
+    agent any
+    
+    environment {
+        AWS_DEFAULT_REGION = 'us-east-1'
+        ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
+        PROJECT_NAME = 'nash-pisharp'
+        ENVIRONMENT = 'demo'
+        
+        // These will be set by Jenkins credentials or environment
+        AWS_ACCOUNT_ID = credentials('aws-account-id')
+        
+        // Application repository URLs
+        FRONTEND_REPO = 'https://github.com/thinhnnd/nash_pisharp_SD5096_frontend.git'
+        BACKEND_REPO = 'https://github.com/thinhnnd/nash_pisharp_SD5096_backend.git'
+    }
+    
+    tools {
+        // Install the Maven version configured as "M3" and add it to the path.
+        dockerTool 'docker-latest'
+    }
+    
+    stages {
+        stage('Checkout Applications') {
+            parallel {
+                stage('Checkout Frontend') {
+                    steps {
+                        dir('frontend') {
+                            git branch: 'main', url: "${FRONTEND_REPO}"
+                        }
+                    }
+                }
+                stage('Checkout Backend') {
+                    steps {
+                        dir('backend') {
+                            git branch: 'main', url: "${BACKEND_REPO}"
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Build Images') {
+            parallel {
+                stage('Build Frontend') {
+                    steps {
+                        dir('frontend') {
+                            script {
+                                sh '''
+                                    # Build frontend image
+                                    docker build -t ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-frontend:${BUILD_NUMBER} .
+                                    docker tag ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-frontend:${BUILD_NUMBER} \\
+                                              ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-frontend:latest
+                                '''
+                            }
+                        }
+                    }
+                }
+                stage('Build Backend') {
+                    steps {
+                        dir('backend') {
+                            script {
+                                sh '''
+                                    # Build backend image
+                                    docker build -t ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-backend:${BUILD_NUMBER} .
+                                    docker tag ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-backend:${BUILD_NUMBER} \\
+                                              ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-backend:latest
+                                '''
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Push to ECR') {
+            steps {
+                script {
+                    sh '''
+                        # Login to ECR
+                        aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | \\
+                            docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                        
+                        # Push frontend images
+                        docker push ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-frontend:${BUILD_NUMBER}
+                        docker push ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-frontend:latest
+                        
+                        # Push backend images
+                        docker push ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-backend:${BUILD_NUMBER}
+                        docker push ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-backend:latest
+                    '''
+                }
+            }
+        }
+        
+        stage('Image Information') {
+            steps {
+                script {
+                    sh '''
+                        echo "=== Built Images ==="
+                        echo "Frontend Image: ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-frontend:${BUILD_NUMBER}"
+                        echo "Backend Image: ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-backend:${BUILD_NUMBER}"
+                        echo ""
+                        echo "=== Image Tags ==="
+                        echo "Build Tag: ${BUILD_NUMBER}"
+                        echo "Latest Tag: latest"
+                        echo ""
+                        echo "=== ECR Repository URLs ==="
+                        echo "Frontend: ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-frontend"
+                        echo "Backend: ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-backend"
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            // Clean up local Docker images
+            script {
+                sh '''
+                    # Clean up Docker images to save space
+                    docker image prune -f
+                    docker system prune -f --volumes || true
+                '''
+            }
+            
+            // Archive artifacts
+            archiveArtifacts artifacts: '**/values*.yaml', allowEmptyArchive: true
+            
+            // Clean workspace
+            cleanWs()
+        }
+        
+        success {
+            script {
+                echo """
+                ✅ Build and Push Successful!
+                
+                📊 Build Details:
+                - Build Number: ${BUILD_NUMBER}
+                - Git Commit Frontend: \$(git -C frontend rev-parse HEAD)
+                - Git Commit Backend: \$(git -C backend rev-parse HEAD)
+                - Timestamp: \$(date)
+                
+                � Docker Images:
+                - Frontend: ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-frontend:${BUILD_NUMBER}
+                - Backend: ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-backend:${BUILD_NUMBER}
+                
+                🏷️  Image Tags:
+                - Build Tag: ${BUILD_NUMBER}
+                - Latest Tag: latest
+                
+                📦 ECR Repositories:
+                - Frontend: ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-frontend
+                - Backend: ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-backend
+                
+                🎯 Next Steps (GitOps):
+                1. Images are now available in ECR
+                2. Update your GitOps repository with new image tags
+                3. GitOps controller will handle deployment to EKS
+                4. Monitor application deployment through your GitOps dashboard
+                
+                📋 Image Pull Commands:
+                docker pull ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-frontend:${BUILD_NUMBER}
+                docker pull ${ECR_REGISTRY}/${PROJECT_NAME}-${ENVIRONMENT}-backend:${BUILD_NUMBER}
+                """
+            }
+        }
+        
+        failure {
+            script {
+                echo """
+                ❌ Build or Push Failed!
+                
+                🔍 Debug Information:
+                - Build Number: ${BUILD_NUMBER}
+                - Stage: ${env.STAGE_NAME}
+                - Node: ${NODE_NAME}
+                - Timestamp: \$(date)
+                
+                📋 Debug Commands:
+                docker images | grep ${PROJECT_NAME}
+                aws ecr describe-repositories --region ${AWS_DEFAULT_REGION}
+                aws ecr get-login-password --region ${AWS_DEFAULT_REGION}
+                
+                💡 Common Issues:
+                1. Check AWS credentials configuration
+                2. Verify ECR repository exists
+                3. Check Docker daemon status
+                4. Review Dockerfile syntax
+                5. Ensure sufficient disk space
+                """
+            }
+        }
+    }
+}

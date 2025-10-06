@@ -1,0 +1,16 @@
+{{- if .Values.storageClass.enabled }}
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageClass.name }}
+  labels:
+    {{- include "nash-pisharp-app.labels" . | nindent 4 }}
+provisioner: {{ .Values.storageClass.provisioner }}
+parameters:
+  {{- range $key, $value := .Values.storageClass.parameters }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
+reclaimPolicy: {{ .Values.storageClass.reclaimPolicy }}
+allowVolumeExpansion: {{ .Values.storageClass.allowVolumeExpansion }}
+volumeBindingMode: WaitForFirstConsumer
+{{- end }}

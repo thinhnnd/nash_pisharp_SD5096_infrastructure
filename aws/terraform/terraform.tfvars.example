@@ -1,0 +1,42 @@
+# General configuration
+project_name    = "nash-pisharp"
+environment     = "demo"
+owner           = "DevOps Team"
+aws_region      = "us-east-1"
+
+# VPC configuration
+vpc_cidr             = "10.0.0.0/16"
+public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
+private_subnet_cidrs = ["10.0.3.0/24", "10.0.4.0/24"]
+
+# ECR configuration
+ecr_enable_scan_on_push = true
+
+# EKS configuration
+cluster_name       = "nash-pisharp-eks"
+kubernetes_version = "1.27"
+cluster_log_types  = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+
+# EKS Node Group configuration
+capacity_type  = "ON_DEMAND"
+instance_types = ["t3.medium"]
+disk_size      = 20
+desired_size   = 2
+max_size       = 4
+min_size       = 1
+
+# Jenkins configuration
+jenkins_instance_type           = "t3.medium"
+jenkins_volume_size             = 30
+jenkins_allowed_ssh_cidrs       = ["0.0.0.0/0"]  # Restrict this in production
+jenkins_allowed_jenkins_cidrs   = ["0.0.0.0/0"]  # Restrict this in production
+jenkins_create_key_pair         = false
+jenkins_existing_key_pair_name  = "your-existing-key-pair-name"  # Update this
+jenkins_allocate_eip            = true
+
+# S3 configuration
+create_s3_bucket = true
+
+# CloudWatch configuration
+create_cloudwatch_logs = true
+log_retention_days     = 7

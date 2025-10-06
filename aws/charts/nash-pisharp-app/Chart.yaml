@@ -1,0 +1,18 @@
+apiVersion: v2
+name: nash-pisharp-app
+description: A Helm chart for Nash PiSharp demo application on AWS EKS
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - react
+  - nodejs
+  - mongodb
+  - todo-app
+  - aws
+  - eks
+maintainers:
+  - name: Nash PiSharp Team
+    email: team@nashpisharp.com
+sources:
+  - https://github.com/nashpisharp/demo-app
