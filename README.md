@@ -1,4 +1,5 @@
-# Nash```
+# Nash
+```
 nash_pisharp_SD5096_infrastructure/
 ├── azure/
 │   ├── terraform/      # IaC for Azure (AKS, ACR, VNet)
@@ -15,7 +16,6 @@ cd ../../nash_pisharp_SD5096_infrastructure/azure/chartsal Network
 ├── shared/             # Common configurations, policies, secrets
 └── README.md
 
-apps/
 ├── nash_pisharp_SD5096_backend/  # Node.js/Express API server
 │   ├── Dockerfile
 │   ├── package.json
@@ -28,7 +28,7 @@ apps/
     ├── package.json
     ├── public/
     └── src/
-```rastructure
+```
 
 This repository contains Infrastructure as Code (IaC) for deploying the Nash PiSharp demo application to cloud providers using Terraform and Helm.
 
