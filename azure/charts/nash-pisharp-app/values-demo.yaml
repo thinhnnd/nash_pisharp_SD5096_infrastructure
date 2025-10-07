@@ -1,0 +1,141 @@
+# Demo environment values for Nash PiSharp
+replicaCount: 1
+
+image:
+  registry: acrnashpisharp.azurecr.io
+  pullPolicy: IfNotPresent
+
+# Security context - completely permissive for development
+podSecurityContext: {}
+
+securityContext: 
+  privileged: true
+
+# Frontend configuration
+frontend:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: frontend
+    tag: "v1.0.25"  # Latest available version
+  env:
+    - name: GENERATE_SOURCEMAP
+      value: "false"
+    - name: CI
+      value: "true"
+    - name: SKIP_PREFLIGHT_CHECK
+      value: "true"
+    - name: DISABLE_ESLINT_PLUGIN
+      value: "true"
+  volumeMounts:
+    - name: cache-volume
+      mountPath: /usr/src/app/node_modules/.cache
+  volumes:
+    - name: cache-volume
+      emptyDir: {}
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 3000  # React dev server runs on port 3000
+
+# Backend configuration  
+backend:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: backend
+    tag: "v1.0.24"  # Latest available version
+  env:
+    - name: NODE_ENV
+      value: "demo"
+    - name: PORT
+      value: "3000"
+    - name: MONGODB_URI
+      value: "mongodb://nash-pisharp-app-mongodb:27017/todoapp_demo"
+    - name: LOG_LEVEL
+      value: "info"
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  service:
+    type: ClusterIP
+    port: 3000
+    targetPort: 3000
+
+# MongoDB configuration
+mongodb:
+  enabled: true
+  replicaCount: 1
+  auth:
+    enabled: false
+  persistence:
+    enabled: true
+    size: 8Gi
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  hosts:
+    - host: nash-pisharp-demo.local
+      paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: frontend
+              port:
+                number: 80
+    # Allow access via IP address  
+    - host: ""  # Empty host accepts any host/IP
+      paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: frontend
+              port:
+                number: 80
+  tls: []
+
+# Service Account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Security Context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 3000
+  fsGroup: 2000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000

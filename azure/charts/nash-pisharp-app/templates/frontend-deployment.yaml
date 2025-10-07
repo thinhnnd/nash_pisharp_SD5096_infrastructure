@@ -55,6 +55,14 @@ spec:
             periodSeconds: 15
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
+          {{- if .Values.frontend.volumeMounts }}
+          volumeMounts:
+            {{- toYaml .Values.frontend.volumeMounts | nindent 12 }}
+          {{- end }}
+      {{- if .Values.frontend.volumes }}
+      volumes:
+        {{- toYaml .Values.frontend.volumes | nindent 8 }}
+      {{- end }}
       {{- with .Values.frontend.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

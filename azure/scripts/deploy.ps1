@@ -1,16 +1,16 @@
 # PowerShell Script for Azure Application Deployment
-# This script provides PowerShell equivalents for application deployment to AKS
+# This script focuses ONLY on deployment - no image building
 
 # Main script parameters
 param(
     [Parameter(Position=0)]
-    [ValidateSet("Deploy", "Upgrade", "Rollback", "Uninstall", "Status", "Logs", "PortForward", "BuildPush", "Help")]
+    [ValidateSet("Deploy", "Upgrade", "Rollback", "Uninstall", "Status", "Logs", "PortForward", "Help")]
     [string]$Command,
     
     [ValidateSet("demo", "dev", "staging", "prod")]
     [string]$Environment = "demo",
     
-    [string]$Namespace = "nash-pisharp",
+    [string]$Namespace = "default",
     
     [string]$ReleaseName = "nash-pisharp-app",
     
@@ -20,6 +20,7 @@ param(
     
     [switch]$Help
 )
+
 # Colors for output
 $ErrorActionPreference = "Stop"
 
@@ -81,7 +82,6 @@ Commands:
   Status                Show deployment status
   Logs                  Show application logs
   PortForward          Setup port forwarding
-  BuildPush            Build and push Docker images to ACR
 
 Parameters:
   -Environment          Environment (demo|dev|staging|prod) [default: demo]
@@ -95,8 +95,10 @@ Examples:
   .\deploy.ps1 Deploy -Environment demo
   .\deploy.ps1 Upgrade -Environment prod
   .\deploy.ps1 Status -Environment dev
-  .\deploy.ps1 BuildPush -Environment staging
   .\deploy.ps1 Logs -Environment demo
+
+Note: Images should be built and pushed to ACR separately before deployment.
+      Update image tags in values-{environment}.yaml files as needed.
 "@
 }
 
@@ -133,15 +135,6 @@ function Test-Prerequisites {
         exit 1
     }
     
-    # Check docker
-    try {
-        $null = Get-Command docker -ErrorAction Stop
-        Write-Success "Docker found"
-    }
-    catch {
-        Write-Warning "Docker is not installed. It's needed for BuildPush command."
-    }
-    
     Write-Success "Prerequisites check completed"
 }
 
@@ -160,50 +153,6 @@ function Test-ClusterConnection {
     }
 }
 
-function Get-TerraformOutputs {
-    Write-Info "Getting Terraform outputs..."
-    
-    $terraformDir = "$PSScriptRoot\..\terraform"
-    
-    if (-not (Test-Path $terraformDir)) {
-        Write-Error "Terraform directory not found: $terraformDir"
-        exit 1
-    }
-    
-    Push-Location $terraformDir
-    
-    try {
-        # Check if terraform state exists
-        $stateList = terraform state list 2>$null
-        if (-not $stateList) {
-            Write-Error "Terraform state not found. Please run infrastructure setup first."
-            exit 1
-        }
-        
-        # Get outputs
-        $script:AcrLoginServer = terraform output -raw acr_login_server 2>$null
-        $script:AksClusterName = terraform output -raw aks_cluster_name 2>$null
-        $script:ResourceGroup = terraform output -raw resource_group_name 2>$null
-        
-        if (-not $script:AcrLoginServer) {
-            Write-Warning "ACR login server not found in Terraform outputs"
-        }
-        else {
-            Write-Info "ACR Login Server: $script:AcrLoginServer"
-        }
-        
-        if (-not $script:AksClusterName) {
-            Write-Warning "AKS cluster name not found in Terraform outputs"
-        }
-        else {
-            Write-Info "AKS Cluster: $script:AksClusterName"
-        }
-    }
-    finally {
-        Pop-Location
-    }
-}
-
 function New-Namespace {
     param([string]$Namespace)
     
@@ -216,125 +165,6 @@ function New-Namespace {
     else {
         kubectl create namespace $Namespace
         Write-Success "Namespace $Namespace created"
-    }
-}
-
-function Build-PushImages {
-    param([string]$Environment)
-    
-    Write-Info "Building and pushing Docker images..."
-    
-    if (-not $script:AcrLoginServer) {
-        Write-Error "ACR login server not available. Cannot push images."
-        exit 1
-    }
-    
-    # Login to ACR
-    Write-Info "Logging into ACR..."
-    $acrName = $script:AcrLoginServer -replace '\.azurecr\.io$', ''
-    az acr login --name $acrName
-    
-    # Build tag for this deployment
-    $buildTag = "$Environment-$(Get-Date -Format 'yyyyMMddHHmmss')"
-    
-    # Frontend image
-    Write-Info "Building frontend image..."
-    $frontendImage = "$script:AcrLoginServer/nash-pisharp-frontend:$buildTag"
-    
-    # Create temporary Dockerfile for frontend
-    $frontendDockerfile = @"
-FROM nginx:alpine
-COPY <<EOF /usr/share/nginx/html/index.html
-<!DOCTYPE html>
-<html>
-<head><title>Nash PiSharp Frontend</title></head>
-<body>
-<h1>Nash PiSharp Frontend - $Environment</h1>
-<p>Frontend application placeholder</p>
-</body>
-</html>
-EOF
-"@
-    
-    $tempDir = [System.IO.Path]::GetTempPath()
-    $frontendDockerfile | Out-File -FilePath "$tempDir\Dockerfile.frontend" -Encoding ASCII
-    
-    docker build -t $frontendImage -f "$tempDir\Dockerfile.frontend" $tempDir
-    docker push $frontendImage
-    Write-Success "Frontend image pushed: $frontendImage"
-    
-    # Backend image
-    Write-Info "Building backend image..."
-    $backendImage = "$script:AcrLoginServer/nash-pisharp-backend:$buildTag"
-    
-    # Create temporary files for backend
-    $packageJson = @"
-{
-  "name": "nash-pisharp-backend",
-  "version": "1.0.0",
-  "main": "server.js",
-  "dependencies": {
-    "express": "^4.18.0"
-  }
-}
-"@
-    
-    $serverJs = @"
-const express = require('express');
-const app = express();
-const port = process.env.PORT || 5000;
-
-app.get('/health', (req, res) => {
-  res.json({ status: 'healthy', environment: process.env.NODE_ENV || 'development' });
-});
-
-app.get('/api/status', (req, res) => {
-  res.json({ 
-    message: 'Nash PiSharp Backend API',
-    environment: process.env.NODE_ENV || 'development',
-    timestamp: new Date().toISOString()
-  });
-});
-
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
-"@
-    
-    $backendDockerfile = @"
-FROM node:alpine
-WORKDIR /app
-COPY package.json .
-COPY server.js .
-RUN npm install
-EXPOSE 5000
-CMD ["node", "server.js"]
-"@
-    
-    $packageJson | Out-File -FilePath "$tempDir\package.json" -Encoding ASCII
-    $serverJs | Out-File -FilePath "$tempDir\server.js" -Encoding ASCII
-    $backendDockerfile | Out-File -FilePath "$tempDir\Dockerfile.backend" -Encoding ASCII
-    
-    docker build -t $backendImage -f "$tempDir\Dockerfile.backend" $tempDir
-    docker push $backendImage
-    Write-Success "Backend image pushed: $backendImage"
-    
-    # Clean up
-    Remove-Item -Path "$tempDir\Dockerfile.frontend", "$tempDir\Dockerfile.backend", "$tempDir\package.json", "$tempDir\server.js" -Force -ErrorAction SilentlyContinue
-    
-    # Save image tags for deployment
-    $imageTags = @"
-FRONTEND_IMAGE=$frontendImage
-BACKEND_IMAGE=$backendImage
-"@
-    $imageTags | Out-File -FilePath "$tempDir\image-tags.env" -Encoding ASCII
-    
-    Write-Success "Images built and pushed successfully"
-    Write-Info "Image tags saved to: $tempDir\image-tags.env"
-    
-    return @{
-        FrontendImage = $frontendImage
-        BackendImage = $backendImage
     }
 }
 
@@ -360,30 +190,7 @@ function Deploy-Application {
         $valuesFile = "$chartsDir\nash-pisharp-app\values.yaml"
     }
     
-    # Load image tags if available
-    $imageOverrides = ""
-    $tempDir = [System.IO.Path]::GetTempPath()
-    $imageTagsFile = "$tempDir\image-tags.env"
-    
-    if (Test-Path $imageTagsFile) {
-        $imageTags = Get-Content $imageTagsFile | Where-Object { $_ -match '=' } | ForEach-Object {
-            $parts = $_ -split '=', 2
-            @{ Name = $parts[0]; Value = $parts[1] }
-        }
-        
-        $frontendImage = ($imageTags | Where-Object { $_.Name -eq 'FRONTEND_IMAGE' }).Value
-        $backendImage = ($imageTags | Where-Object { $_.Name -eq 'BACKEND_IMAGE' }).Value
-        
-        if ($frontendImage -and $backendImage) {
-            $frontendRepo = $frontendImage -replace ':.*$', ''
-            $frontendTag = $frontendImage -replace '^.*:', ''
-            $backendRepo = $backendImage -replace ':.*$', ''
-            $backendTag = $backendImage -replace '^.*:', ''
-            
-            $imageOverrides = "--set frontend.image.repository=$frontendRepo --set frontend.image.tag=$frontendTag --set backend.image.repository=$backendRepo --set backend.image.tag=$backendTag"
-            Write-Info "Using custom image tags from build"
-        }
-    }
+    Write-Info "Using values file: $valuesFile"
     
     # Helm install/upgrade
     $helmArgs = "--namespace $Namespace --timeout $Timeout"
@@ -392,7 +199,7 @@ function Deploy-Application {
     }
     
     $chartPath = "$chartsDir\nash-pisharp-app"
-    $helmCommand = "helm upgrade --install $ReleaseName $chartPath -f $valuesFile $helmArgs $imageOverrides"
+    $helmCommand = "helm upgrade --install $ReleaseName $chartPath -f $valuesFile $helmArgs"
     
     Write-Info "Running: $helmCommand"
     Invoke-Expression $helmCommand
@@ -594,6 +401,7 @@ function Start-PortForwarding {
         Write-Info "Port forwarding stopped"
     }
 }
+
 # Main execution
 if ($Help -or -not $Command) {
     Show-Usage
@@ -608,14 +416,9 @@ Write-Info "Release: $ReleaseName"
 
 $WaitForDeployment = -not $NoWait
 
-# Run checks (skip for some commands)
-if ($Command -ne "BuildPush") {
-    Test-Prerequisites
-    Test-ClusterConnection
-}
-
-# Get Terraform outputs
-Get-TerraformOutputs
+# Run checks
+Test-Prerequisites
+Test-ClusterConnection
 
 # Execute command
 switch ($Command) {
@@ -639,10 +442,6 @@ switch ($Command) {
     }
     "PortForward" {
         Start-PortForwarding -Namespace $Namespace -ReleaseName $ReleaseName
-    }
-    "BuildPush" {
-        Test-Prerequisites
-        Build-PushImages -Environment $Environment
     }
 }
 
