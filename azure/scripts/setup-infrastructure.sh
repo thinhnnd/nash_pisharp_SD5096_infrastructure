@@ -168,17 +168,11 @@ setup_terraform_backend() {
         --account-name "$backend_sa" \
         --query "[0].value" -o tsv)
     
-    # Create backend configuration
-    cat > "$TERRAFORM_DIR/backend.tf" << EOF
-terraform {
-  backend "azurerm" {
-    resource_group_name  = "$backend_rg"
-    storage_account_name = "$backend_sa"
-    container_name       = "$backend_container"
-    key                  = "${ENVIRONMENT}.terraform.tfstate"
-  }
-}
-EOF
+    # Note: Backend configuration is already in backend-state-management.tf
+    # Update the existing file to match the created storage account
+    print_info "Backend configuration is already managed in backend-state-management.tf"
+    print_info "Storage account created: $backend_sa"
+    print_info "Resource group: $backend_rg"
     
     print_success "Terraform backend configured"
 }
@@ -261,10 +255,11 @@ run_terraform() {
 configure_kubectl() {
     print_info "Configuring kubectl for AKS cluster..."
     
-    local aks_name="${PROJECT_NAME}-${ENVIRONMENT}-aks"
-    local resource_group="${PROJECT_NAME}-${ENVIRONMENT}-rg"
+    # Use the correct naming convention from terraform
+    local aks_name="aks-${PROJECT_NAME}"
+    local resource_group="rg-${PROJECT_NAME}-${ENVIRONMENT}"
     
-    print_info "Getting AKS credentials..."
+    print_info "Getting AKS credentials for cluster: $aks_name in resource group: $resource_group"
     az aks get-credentials \
         --resource-group "$resource_group" \
         --name "$aks_name" \
@@ -456,6 +451,8 @@ case "$COMMAND" in
         ;;
     "plan")
         cd "$TERRAFORM_DIR"
+        # Setup Terraform backend first
+        setup_terraform_backend
         create_terraform_vars
         run_terraform "init"
         run_terraform "plan"

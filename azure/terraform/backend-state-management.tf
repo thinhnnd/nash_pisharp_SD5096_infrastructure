@@ -7,7 +7,7 @@
 terraform {
   backend "azurerm" {
     resource_group_name  = "nash-pisharp-demo-tfstate-rg"
-    storage_account_name = "nashpisharp10071423"
+    storage_account_name = "nashpisharpdemotfstate"
     container_name       = "tfstate"
     key                  = "demo.terraform.tfstate"
   }

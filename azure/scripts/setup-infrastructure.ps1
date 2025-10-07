@@ -325,10 +325,11 @@ function Set-KubectlConfig {
     
     Write-Info "Configuring kubectl for AKS cluster..."
     
-    $aksName = "$ProjectName-$Environment-aks"
-    $resourceGroup = "$ProjectName-$Environment-rg"
+    # Use the correct naming convention from terraform
+    $aksName = "aks-$ProjectName"
+    $resourceGroup = "rg-$ProjectName-$Environment"
     
-    Write-Info "Getting AKS credentials..."
+    Write-Info "Getting AKS credentials for cluster: $aksName in resource group: $resourceGroup"
     az aks get-credentials `
         --resource-group $resourceGroup `
         --name $aksName `
@@ -498,6 +499,8 @@ switch ($Command) {
     }
     "Plan" {
         $terraformDir = "$PSScriptRoot\..\terraform"
+        # Setup Terraform backend first
+        New-TerraformBackend -ProjectName $ProjectName -Environment $Environment -Location $Location
         New-TerraformVars -SubscriptionId $SubscriptionId -TenantId $TenantId -Location $Location -ProjectName $ProjectName -Environment $Environment
         Invoke-Terraform -Action "init" -TerraformDir $terraformDir
         Invoke-Terraform -Action "plan" -TerraformDir $terraformDir

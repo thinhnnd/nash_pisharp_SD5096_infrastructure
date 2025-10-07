@@ -21,13 +21,6 @@ terraform {
       version = "~>2.0"
     }
   }
-  
-  backend "azurerm" {
-    resource_group_name  = "nash-pisharp-demo-tfstate-rg"
-    storage_account_name = "nashpisharpdemotfstate"
-    container_name       = "tfstate"
-    key                  = "demo.terraform.tfstate"
-  }
 }
 
 provider "azurerm" {
@@ -86,8 +79,8 @@ module "bootstrap" {
 module "vnet" {
   source = "./vnet"
   
-  resource_group_name = azurerm_resource_group.main.name
-  location           = azurerm_resource_group.main.location
+  resource_group_name = module.bootstrap.resource_group_name
+  location           = var.location
   vnet_name          = var.vnet_name
   vnet_cidr          = var.vnet_cidr
   aks_subnet_cidr    = var.aks_subnet_cidr
@@ -101,8 +94,8 @@ module "vnet" {
 module "acr" {
   source = "./acr"
   
-  resource_group_name = azurerm_resource_group.main.name
-  location           = azurerm_resource_group.main.location
+  resource_group_name = module.bootstrap.resource_group_name
+  location           = var.location
   acr_name           = var.acr_name
   sku                = var.acr_sku
   admin_enabled      = var.acr_admin_enabled
@@ -115,8 +108,8 @@ module "acr" {
 module "aks" {
   source = "./aks"
   
-  resource_group_name = azurerm_resource_group.main.name
-  location           = azurerm_resource_group.main.location
+  resource_group_name = module.bootstrap.resource_group_name
+  location           = var.location
   cluster_name       = var.cluster_name
   dns_prefix         = var.dns_prefix
   kubernetes_version = var.kubernetes_version
