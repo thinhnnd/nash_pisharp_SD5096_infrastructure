@@ -1,3 +1,9 @@
+# =============================================================================
+# TERRAFORM PROVIDER CONFIGURATION
+# =============================================================================
+# This file defines the required Terraform version and providers.
+# Backend configuration is now separated in backend-state-management.tf
+
 terraform {
   required_version = ">=1.0"
   
@@ -76,12 +82,12 @@ module "bootstrap" {
   tags                 = local.common_tags
 }
 
-# VNet/Network module
+# VNet/Network module - Phụ thuộc vào Resource Group
 module "vnet" {
   source = "./vnet"
   
-  resource_group_name = var.resource_group_name
-  location           = var.location
+  resource_group_name = azurerm_resource_group.main.name
+  location           = azurerm_resource_group.main.location
   vnet_name          = var.vnet_name
   vnet_cidr          = var.vnet_cidr
   aks_subnet_cidr    = var.aks_subnet_cidr
@@ -91,12 +97,12 @@ module "vnet" {
   depends_on = [module.bootstrap]
 }
 
-# ACR module
+# ACR module - Phụ thuộc vào Resource Group
 module "acr" {
   source = "./acr"
   
-  resource_group_name = var.resource_group_name
-  location           = var.location
+  resource_group_name = azurerm_resource_group.main.name
+  location           = azurerm_resource_group.main.location
   acr_name           = var.acr_name
   sku                = var.acr_sku
   admin_enabled      = var.acr_admin_enabled
@@ -105,12 +111,12 @@ module "acr" {
   depends_on = [module.bootstrap]
 }
 
-# AKS module
+# AKS module - Phụ thuộc vào VNet và ACR
 module "aks" {
   source = "./aks"
   
-  resource_group_name = var.resource_group_name
-  location           = var.location
+  resource_group_name = azurerm_resource_group.main.name
+  location           = azurerm_resource_group.main.location
   cluster_name       = var.cluster_name
   dns_prefix         = var.dns_prefix
   kubernetes_version = var.kubernetes_version

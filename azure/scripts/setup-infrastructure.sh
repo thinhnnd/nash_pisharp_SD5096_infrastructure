@@ -206,7 +206,7 @@ pod_subnet_prefix     = "10.0.2.0/24"
 # AKS Configuration
 aks_node_count    = 2
 aks_node_vm_size  = "Standard_D2s_v3"
-kubernetes_version = "1.28"
+kubernetes_version = "1.31"
 
 # Application Configuration
 app_port = 3000
